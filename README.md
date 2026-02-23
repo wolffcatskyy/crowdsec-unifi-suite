@@ -15,6 +15,7 @@ Detect → Decide → Enforce
 | **Detect** | [crowdsec-unifi-parser](https://github.com/wolffcatskyy/crowdsec-unifi-parser) | Parse UniFi firewall logs for CrowdSec analysis |
 | **Decide** | CrowdSec Engine | Apply scenarios, check community blocklists |
 | **Enforce** | [crowdsec-unifi-bouncer](https://github.com/wolffcatskyy/crowdsec-unifi-bouncer) | Push ban decisions to UniFi firewall rules |
+| **Prioritize** | [crowdsec-unifi-bouncer/sidecar](https://github.com/wolffcatskyy/crowdsec-unifi-bouncer/tree/main/sidecar) | Score and filter decisions to fit device capacity |
 | **Augment** | [crowdsec-blocklist-import](https://github.com/wolffcatskyy/crowdsec-blocklist-import) | Import external threat intel (AbuseIPDB, Spamhaus, etc.) |
 
 ## Quick Install
@@ -80,7 +81,12 @@ UniFi's built-in Threat Management (IDS/IPS) and CrowdSec serve complementary ro
 
 ### Optional Components
 
-4. **Blocklist Import**
+4. **Sidecar Proxy** (recommended when LAPI decisions exceed device capacity)
+   - Scores decisions across 7 factors (scenario, origin, TTL, freshness, CIDR, recidivism, decision type)
+   - Returns only the highest-priority threats that fit your device's ipset
+   - Prevents silent overflow when LAPI has 120K+ decisions but your device holds 15K-30K
+
+5. **Blocklist Import**
    - Import external threat intel feeds
    - AbuseIPDB, Spamhaus, and custom lists
 
@@ -103,7 +109,7 @@ nano /etc/crowdsec/blocklist-import.yaml
 - UniFi OS 3.x+ (UDM/UDR/UCG series)
 - SSH access to UniFi device
 - CrowdSec Local API (installed automatically if missing)
-- Python 3.8+ (for bouncer and blocklist-import)
+- Python 3.8+ (for blocklist-import only)
 
 ## Individual Repositories
 
@@ -113,6 +119,7 @@ For standalone installation or development:
 |-----------|------------|---------------|
 | Parser | [crowdsec-unifi-parser](https://github.com/wolffcatskyy/crowdsec-unifi-parser) | Parse UniFi logs |
 | Bouncer | [crowdsec-unifi-bouncer](https://github.com/wolffcatskyy/crowdsec-unifi-bouncer) | Enforce decisions |
+| Sidecar Proxy | [crowdsec-unifi-bouncer/sidecar](https://github.com/wolffcatskyy/crowdsec-unifi-bouncer/tree/main/sidecar) | Prioritize decisions for device capacity |
 | Blocklist Import | [crowdsec-blocklist-import](https://github.com/wolffcatskyy/crowdsec-blocklist-import) | Import threat feeds |
 
 ## Support
