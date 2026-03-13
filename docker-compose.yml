@@ -7,12 +7,12 @@
 #
 # Quick start:
 #   cp .env.example .env
-#   # Edit .env — set BOUNCER_API_KEY and (optionally) ABUSEIPDB_API_KEY
+#   # Edit .env with your credentials
 #   docker compose up -d
 #
 # After the stack is running, register a bouncer key for the sidecar:
 #   docker exec crowdsec cscli bouncers add crowdsec-sidecar
-#   # Paste the output key into .env as BOUNCER_API_KEY, then:
+#   # Paste the output key into sidecar-config.yaml as upstream_lapi_key, then:
 #   docker compose up -d crowdsec-sidecar
 #
 # The UniFi bouncer (on UDM/UDR) connects to the sidecar on port 8084.
@@ -41,7 +41,6 @@ services:
     volumes:
       - crowdsec_config:/etc/crowdsec
       - crowdsec_data:/var/lib/crowdsec/data
-      - crowdsec_logs:/var/log/crowdsec
       # Mount host log directories for analysis (adjust paths to your setup)
       - /var/log:/var/log/host:ro
     healthcheck:
@@ -135,8 +134,6 @@ volumes:
   crowdsec_config:
     driver: local
   crowdsec_data:
-    driver: local
-  crowdsec_logs:
     driver: local
 
 # --------------------------------------------------------------------------

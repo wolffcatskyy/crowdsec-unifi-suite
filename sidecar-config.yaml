@@ -15,9 +15,10 @@ listen_addr: "0.0.0.0:8084"
 # CrowdSec LAPI — use the Docker service name since both are on the same network
 upstream_lapi_url: "http://crowdsec:8080"
 
-# Bouncer API key (set BOUNCER_API_KEY in .env, then run: docker compose up -d crowdsec-sidecar)
-# This value is intentionally left as a placeholder — set it in your .env
-upstream_lapi_key: "YOUR_BOUNCER_KEY"
+# ⚠️  REQUIRED: Replace with your actual bouncer API key
+# Generate with: docker exec crowdsec cscli bouncers add crowdsec-sidecar
+# The BOUNCER_API_KEY env var in docker-compose.yml does NOT override this value
+upstream_lapi_key: "REPLACE_ME"
 
 # Maximum decisions to return to the UniFi bouncer
 # Set this to match your device's ipset capacity minus headroom
