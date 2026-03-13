@@ -1,131 +1,178 @@
 # CrowdSec UniFi Suite
 
-One-command installer for the complete CrowdSec + UniFi security stack.
+Unified server-side stack and device installer for the CrowdSec + UniFi security ecosystem.
 
 ## Overview
 
 CrowdSec UniFi Suite brings collaborative threat intelligence to your UniFi network with a defense-in-depth approach:
 
 ```
-Detect → Decide → Enforce
+Detect → Decide → Prioritize → Enforce
 ```
 
 | Stage | Component | Function |
 |-------|-----------|----------|
 | **Detect** | [crowdsec-unifi-parser](https://github.com/wolffcatskyy/crowdsec-unifi-parser) | Parse UniFi firewall logs for CrowdSec analysis |
 | **Decide** | CrowdSec Engine | Apply scenarios, check community blocklists |
+| **Prioritize** | [crowdsec-sidecar](https://github.com/wolffcatskyy/crowdsec-unifi-bouncer/tree/main/sidecar) | Score and filter decisions to fit device ipset capacity |
 | **Enforce** | [crowdsec-unifi-bouncer](https://github.com/wolffcatskyy/crowdsec-unifi-bouncer) | Push ban decisions to UniFi firewall rules |
-| **Prioritize** | [crowdsec-unifi-bouncer/sidecar](https://github.com/wolffcatskyy/crowdsec-unifi-bouncer/tree/main/sidecar) | Score and filter decisions to fit device capacity |
-| **Augment** | [crowdsec-blocklist-import](https://github.com/wolffcatskyy/crowdsec-blocklist-import) | Import external threat intel (AbuseIPDB, Spamhaus, etc.) |
+| **Augment** | [crowdsec-blocklist-import](https://github.com/wolffcatskyy/crowdsec-blocklist-import) | Import external threat feeds (AbuseIPDB, Spamhaus, IPsum) |
 
-## Quick Install
+---
 
-```bash
-curl -sSL https://raw.githubusercontent.com/wolffcatskyy/crowdsec-unifi-suite/main/install.sh | bash
-```
+## Quick Start: Server-Side Stack
 
-Or clone and run locally:
+The `docker-compose.yml` in this repo brings up the full server-side stack on any Linux host.
+
+### 1. Clone and configure
 
 ```bash
 git clone https://github.com/wolffcatskyy/crowdsec-unifi-suite.git
 cd crowdsec-unifi-suite
-./install.sh
+cp .env.example .env
 ```
+
+Edit `.env` — set your timezone. Come back to fill in credentials after step 2.
+
+### 2. Start CrowdSec first
+
+```bash
+docker compose up -d crowdsec
+```
+
+Wait for CrowdSec to become healthy (about 30 seconds):
+
+```bash
+docker compose ps
+```
+
+### 3. Generate credentials
+
+```bash
+# Machine login for blocklist-import (read/write decisions)
+docker exec crowdsec cscli machines add blocklist-import --password 'YourSecurePassword'
+
+# Bouncer key for the sidecar (reads decisions, applies scoring)
+docker exec crowdsec cscli bouncers add crowdsec-sidecar
+
+# Bouncer key for blocklist-import deduplication
+docker exec crowdsec cscli bouncers add blocklist-import
+```
+
+Copy each key into `.env`:
+- Sidecar bouncer key → `BOUNCER_API_KEY`
+- Machine password → `BLOCKLIST_MACHINE_PASSWORD`
+- Blocklist bouncer key → `BLOCKLIST_BOUNCER_KEY`
+
+Also update `sidecar-config.yaml`:
+- Set `upstream_lapi_key` to the sidecar bouncer key
+- Set `max_decisions` to match your UniFi device's ipset capacity (see table below)
+
+### 4. Start the full stack
+
+```bash
+docker compose up -d
+```
+
+### 5. Install the bouncer on your UniFi device
+
+```bash
+# SSH to your UDM/UDR
+ssh root@<udm-ip>
+
+# Download and run the installer
+curl -sSL https://raw.githubusercontent.com/wolffcatskyy/crowdsec-unifi-suite/main/install.sh | bash
+```
+
+When prompted, point the bouncer at the sidecar on port 8084 (not LAPI directly):
+
+```
+api_url: http://<your-server-ip>:8084/
+```
+
+---
+
+## Architecture
+
+```
+UniFi Device (UDM/UDR)              Linux Server
+┌─────────────────────┐              ┌──────────────────────────────────────┐
+│  crowdsec-firewall  │              │  crowdsec (LAPI + agent)             │
+│     -bouncer        │◄────────────►│    port 8080                         │
+│  (ipset enforcement)│   port 8084  │                                      │
+└─────────────────────┘       ▲      │  crowdsec-sidecar                    │
+                               └─────│    port 8084 (bouncer connects here) │
+                                     │    scores + caps to device capacity  │
+                                     │                                      │
+                                     │  blocklist-import (daemon, hourly)   │
+                                     │    AbuseIPDB, Spamhaus, IPsum feeds  │
+                                     └──────────────────────────────────────┘
+```
+
+### Why the sidecar matters
+
+CrowdSec LAPI accumulates 100K+ decisions from community blocklists. UniFi devices hold
+15K–50K ipset entries. Without the sidecar, LAPI silently drops the excess — you have no
+control over which threats get enforced.
+
+The sidecar scores every decision across 7 factors (scenario severity, origin, TTL,
+freshness, CIDR size, decision type, recidivism) and returns only the highest-priority
+threats that fit your device's capacity.
+
+---
 
 ## Device Compatibility
 
-| Device | Architecture | Status | Notes |
-|--------|--------------|--------|-------|
-| UDM Pro | arm64 | Supported | Primary target |
-| UDM SE | arm64 | Supported | Primary target |
-| UDM Pro Max | arm64 | Supported | Primary target |
-| UDR | arm64 | Supported | Tested |
-| UDM (base) | arm64 | Supported | Limited resources |
-| UCG Ultra | arm64 | Experimental | Community testing |
-| Cloud Gateway Max | arm64 | Experimental | Community testing |
-| USG / USG Pro | mips64 | Not Supported | Legacy architecture |
+| Device | Architecture | Status | ipset Capacity | Recommended `max_decisions` |
+|--------|--------------|--------|----------------|------------------------------|
+| UDM Pro | arm64 | Supported | ~50,000 | 45,000 |
+| UDM SE | arm64 | Supported | ~50,000 | 45,000 |
+| UDM Pro Max | arm64 | Supported | ~50,000 | 45,000 |
+| UDR | arm64 | Supported | ~15,000 | 13,000 |
+| UCG Ultra | arm64 | Experimental | ~30,000 | 27,000 |
+| Cloud Gateway Max | arm64 | Experimental | ~30,000 | 27,000 |
+| UDM (base) | arm64 | Supported | ~10,000 | 8,000 |
+| USG / USG Pro | mips64 | Not Supported | — | — |
 
-## Defense in Depth
+---
 
-### Why use CrowdSec alongside UniFi IDS/IPS?
-
-UniFi's built-in Threat Management (IDS/IPS) and CrowdSec serve complementary roles:
+## Why CrowdSec alongside UniFi IDS/IPS?
 
 | Capability | UniFi IDS/IPS | CrowdSec Suite |
 |------------|---------------|----------------|
-| **Detection Method** | Signature-based (Suricata rules) | Behavior analysis + community intel |
-| **Threat Intelligence** | Ubiquiti-curated rules | 200K+ community-shared threat signals |
-| **Response Speed** | Real-time inline | Near real-time (bouncer sync) |
+| **Detection** | Signature-based (Suricata) | Behavior analysis + community intel |
+| **Threat Intelligence** | Ubiquiti-curated | 200K+ community-shared signals |
+| **Response** | Real-time inline | Near real-time (bouncer sync) |
 | **Custom Scenarios** | Limited | Fully customizable |
-| **Log Analysis** | Alerts only | Parse & act on your own logs |
-| **External Blocklists** | GeoIP only | Any IP blocklist (AbuseIPDB, Spamhaus, etc.) |
+| **External Blocklists** | GeoIP only | AbuseIPDB, Spamhaus, IPsum, more |
 | **Resource Usage** | High (inline inspection) | Low (decision-based) |
 
-**Best practice**: Enable UniFi IDS/IPS for real-time attack mitigation, and CrowdSec for proactive blocking based on global threat intelligence.
+Best practice: run both. UniFi IDS/IPS handles real-time inline attacks; CrowdSec proactively
+blocks known-bad IPs before they ever connect.
 
-## What Gets Installed
-
-### Core Components
-
-1. **CrowdSec Engine** (if not present)
-   - Log analyzer and decision engine
-   - Community blocklist subscriptions
-
-2. **UniFi Parser**
-   - Parses UniFi firewall log format
-   - Enables CrowdSec scenarios against UniFi logs
-
-3. **UniFi Bouncer**
-   - Syncs CrowdSec decisions to UniFi firewall rules
-   - Automatic ban/unban lifecycle management
-   - Optional AbuseIPDB reporting (report malicious IPs to AbuseIPDB in real-time)
-
-### Optional Components
-
-4. **Sidecar Proxy** (recommended when LAPI decisions exceed device capacity)
-   - Scores decisions across 7 factors (scenario, origin, TTL, freshness, CIDR, recidivism, decision type)
-   - Returns only the highest-priority threats that fit your device's ipset
-   - Prevents silent overflow when LAPI has 120K+ decisions but your device holds 15K-30K
-
-5. **Blocklist Import**
-   - Import external threat intel feeds
-   - AbuseIPDB, Spamhaus, and custom lists
-
-## Configuration
-
-After installation, configure each component:
-
-```bash
-# Bouncer configuration
-$EDITOR /etc/crowdsec/bouncers/unifi-bouncer.yaml
-
-# Parser is auto-configured for standard UniFi log locations
-
-# Blocklist import (optional)
-$EDITOR /etc/crowdsec/blocklist-import.yaml
-```
-
-## Requirements
-
-- UniFi OS 3.x+ (UDM/UDR/UCG series)
-- SSH access to UniFi device
-- CrowdSec Local API (installed automatically if missing)
-- Python 3.8+ (for blocklist-import only)
+---
 
 ## Individual Repositories
 
-For standalone installation or development:
+Each component can be used standalone — install just the piece you need:
 
-| Component | Repository | Documentation |
-|-----------|------------|---------------|
-| Parser | [crowdsec-unifi-parser](https://github.com/wolffcatskyy/crowdsec-unifi-parser) | Parse UniFi logs |
-| Bouncer | [crowdsec-unifi-bouncer](https://github.com/wolffcatskyy/crowdsec-unifi-bouncer) | Enforce decisions |
-| Sidecar Proxy | [crowdsec-unifi-bouncer/sidecar](https://github.com/wolffcatskyy/crowdsec-unifi-bouncer/tree/main/sidecar) | Prioritize decisions for device capacity |
-| Blocklist Import | [crowdsec-blocklist-import](https://github.com/wolffcatskyy/crowdsec-blocklist-import) | Import threat feeds |
+| Component | Repository | Use Case |
+|-----------|------------|----------|
+| Bouncer | [crowdsec-unifi-bouncer](https://github.com/wolffcatskyy/crowdsec-unifi-bouncer) | Enforce CrowdSec decisions on UniFi |
+| Sidecar | [crowdsec-unifi-bouncer/sidecar](https://github.com/wolffcatskyy/crowdsec-unifi-bouncer/tree/main/sidecar) | Decision prioritization for capacity-limited devices |
+| Blocklist Import | [crowdsec-blocklist-import](https://github.com/wolffcatskyy/crowdsec-blocklist-import) | Import AbuseIPDB, Spamhaus, IPsum feeds |
+| Parser | [crowdsec-unifi-parser](https://github.com/wolffcatskyy/crowdsec-unifi-parser) | Parse UniFi logs with CrowdSec |
+
+---
+
+## Roadmap
+
+See [ROADMAP.md](ROADMAP.md) for planned features including a unified CLI, Grafana dashboards,
+CrowdSec CTI enrichment, and multi-device support.
+
+---
 
 ## Support
-
-**Note:** This project is developed with and supported by AI. Issues and PRs are triaged and responded to by Claude AI agents. If you need a human, just ask—but honestly, AI is faster, smarter, and nicer.
 
 Feel free to open issues for:
 
@@ -145,9 +192,11 @@ Feel free to open issues for:
 - [CrowdSec Discord](https://discord.gg/crowdsec)
 - [UniFi Community](https://community.ui.com/)
 
+---
+
 ## License
 
-MIT License - See [LICENSE](LICENSE) for details.
+MIT License — see [LICENSE](LICENSE) for details.
 
 ## Acknowledgments
 

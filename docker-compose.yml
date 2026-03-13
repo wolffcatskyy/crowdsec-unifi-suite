@@ -1,0 +1,148 @@
+# CrowdSec UniFi Suite — Server-Side Stack
+#
+# Brings up the full server-side security stack on any Linux host:
+#   - CrowdSec LAPI + agent (log analysis, community blocklists)
+#   - CrowdSec Sidecar (decision prioritization proxy for device capacity)
+#   - Blocklist Import (external threat feed importer)
+#
+# Quick start:
+#   cp .env.example .env
+#   # Edit .env — set BOUNCER_API_KEY and (optionally) ABUSEIPDB_API_KEY
+#   docker compose up -d
+#
+# After the stack is running, register a bouncer key for the sidecar:
+#   docker exec crowdsec cscli bouncers add crowdsec-sidecar
+#   # Paste the output key into .env as BOUNCER_API_KEY, then:
+#   docker compose up -d crowdsec-sidecar
+#
+# The UniFi bouncer (on UDM/UDR) connects to the sidecar on port 8084.
+# Set api_url in crowdsec-firewall-bouncer.yaml to http://<this-host>:8084/
+
+services:
+
+  # --------------------------------------------------------------------------
+  # CrowdSec LAPI + Agent
+  # Analyzes logs, applies scenarios, pulls community blocklists
+  # --------------------------------------------------------------------------
+  crowdsec:
+    image: crowdsecurity/crowdsec:latest
+    container_name: crowdsec
+    restart: unless-stopped
+    networks:
+      - crowdsec
+    ports:
+      - "8080:8080"           # LAPI (internal — only expose externally if needed)
+    environment:
+      - TZ=${TZ:-America/New_York}
+      - COLLECTIONS=crowdsecurity/linux crowdsecurity/sshd
+      - CUSTOM_HOSTNAME=${CROWDSEC_HOSTNAME:-crowdsec-server}
+      # Set to true to enroll this instance with the CrowdSec console
+      - ENROLL_KEY=${CROWDSEC_ENROLL_KEY:-}
+    volumes:
+      - crowdsec_config:/etc/crowdsec
+      - crowdsec_data:/var/lib/crowdsec/data
+      - crowdsec_logs:/var/log/crowdsec
+      # Mount host log directories for analysis (adjust paths to your setup)
+      - /var/log:/var/log/host:ro
+    healthcheck:
+      test: ["CMD", "cscli", "version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # --------------------------------------------------------------------------
+  # CrowdSec Sidecar Proxy
+  # Sits between LAPI and your UniFi bouncer. Scores and caps decisions to fit
+  # device ipset capacity (UDM SE: ~50K, UDR: ~15K).
+  #
+  # Without the sidecar: LAPI silently drops excess decisions above ipset maxelem.
+  # With the sidecar: highest-priority threats are kept, low-priority ones dropped.
+  # --------------------------------------------------------------------------
+  crowdsec-sidecar:
+    image: ghcr.io/wolffcatskyy/crowdsec-sidecar:latest
+    container_name: crowdsec-sidecar
+    restart: unless-stopped
+    networks:
+      - crowdsec
+    ports:
+      - "8084:8084"           # Bouncer connects here instead of LAPI directly
+    volumes:
+      - ./sidecar-config.yaml:/etc/crowdsec-sidecar/config.yaml:ro
+    environment:
+      - TZ=${TZ:-America/New_York}
+      # AbuseIPDB reporting: report malicious IPs seen on your network
+      - ABUSEIPDB_API_KEY=${ABUSEIPDB_API_KEY:-}
+      - ABUSEIPDB_REPORT_ENABLED=${ABUSEIPDB_REPORT_ENABLED:-false}
+    depends_on:
+      crowdsec:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8084/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # --------------------------------------------------------------------------
+  # Blocklist Import (daemon mode, refreshes hourly)
+  # Imports external threat feeds into CrowdSec decisions:
+  #   AbuseIPDB public mirror, IPsum, Spamhaus DROP, and more
+  #
+  # Uses machine credentials (read/write) rather than bouncer key (read-only)
+  # so it can add decisions directly.
+  # --------------------------------------------------------------------------
+  blocklist-import:
+    image: ghcr.io/wolffcatskyy/crowdsec-blocklist-import:latest
+    container_name: crowdsec-blocklist-import
+    restart: unless-stopped
+    networks:
+      - crowdsec
+    environment:
+      - TZ=${TZ:-America/New_York}
+      # CrowdSec LAPI credentials (machine login, not bouncer key)
+      - CROWDSEC_LAPI_URL=http://crowdsec:8080
+      - CROWDSEC_MACHINE_ID=${BLOCKLIST_MACHINE_ID:-blocklist-import}
+      - CROWDSEC_MACHINE_PASSWORD=${BLOCKLIST_MACHINE_PASSWORD}
+      # Also needs a bouncer key to read existing decisions for deduplication
+      - CROWDSEC_LAPI_KEY=${BLOCKLIST_BOUNCER_KEY}
+      # How long imported decisions last before expiring
+      - DECISION_DURATION=${BLOCKLIST_DECISION_DURATION:-24h}
+      # Max total decisions across all sources (0 = unlimited)
+      # UDM SE/Pro: 50000 | UDR: 15000 | Linux server: 0
+      - MAX_DECISIONS=${BLOCKLIST_MAX_DECISIONS:-0}
+      # Run every hour (daemon mode). Set to 0 for single run.
+      - INTERVAL=3600
+      # Threat feeds — enable what you want
+      - ENABLE_IPSUM=${ENABLE_IPSUM:-true}
+      - ENABLE_ABUSE_IPDB=${ENABLE_ABUSE_IPDB:-true}
+      - ENABLE_SPAMHAUS=${ENABLE_SPAMHAUS:-true}
+      - ENABLE_TOR=${ENABLE_TOR:-false}
+      - ENABLE_SCANNERS=${ENABLE_SCANNERS:-false}
+      # AbuseIPDB direct API (optional — public mirror works without a key)
+      - ABUSEIPDB_API_KEY=${ABUSEIPDB_API_KEY:-}
+      - ABUSEIPDB_MIN_CONFIDENCE=${ABUSEIPDB_MIN_CONFIDENCE:-90}
+      # Logging
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      crowdsec:
+        condition: service_healthy
+
+# --------------------------------------------------------------------------
+# Volumes
+# --------------------------------------------------------------------------
+volumes:
+  crowdsec_config:
+    driver: local
+  crowdsec_data:
+    driver: local
+  crowdsec_logs:
+    driver: local
+
+# --------------------------------------------------------------------------
+# Network
+# --------------------------------------------------------------------------
+networks:
+  crowdsec:
+    name: crowdsec
+    driver: bridge

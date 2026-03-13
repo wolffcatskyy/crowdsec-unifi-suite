@@ -1,0 +1,92 @@
+# CrowdSec Sidecar Proxy Configuration
+#
+# This file is mounted into the sidecar container at:
+#   /etc/crowdsec-sidecar/config.yaml
+#
+# Adjust max_decisions to match your UniFi device capacity:
+#   UDM SE / UDM Pro:     50000 (leave headroom: use 45000)
+#   UDR:                  15000 (leave headroom: use 13000)
+#   UDM (base):           10000 (leave headroom: use 8000)
+#   UCG Ultra / CGM:      30000 (leave headroom: use 27000)
+
+# Address the sidecar listens on inside the container
+listen_addr: "0.0.0.0:8084"
+
+# CrowdSec LAPI — use the Docker service name since both are on the same network
+upstream_lapi_url: "http://crowdsec:8080"
+
+# Bouncer API key (set BOUNCER_API_KEY in .env, then run: docker compose up -d crowdsec-sidecar)
+# This value is intentionally left as a placeholder — set it in your .env
+upstream_lapi_key: "YOUR_BOUNCER_KEY"
+
+# Maximum decisions to return to the UniFi bouncer
+# Set this to match your device's ipset capacity minus headroom
+max_decisions: 45000
+
+# How long to cache LAPI responses (reduces LAPI load)
+cache_ttl: 60s
+
+# Log level: debug, info, warn, error
+log_level: "info"
+
+# Scoring — controls which decisions survive when the cap is hit.
+# Higher score = higher priority = kept when truncating.
+scoring:
+  scenario_multiplier: 2.0
+
+  scenarios:
+    ssh-bf: 50
+    ssh-slow-bf: 50
+    ssh-cve-2024-6387: 60
+    http-cve-.*: 55
+    http-sqli: 50
+    http-xss: 45
+    http-path-traversal: 45
+    http-probing: 30
+    http-crawl-non_statics: 25
+    http-bad-user-agent: 20
+    http-sensitive-files: 35
+    default: 10
+
+  origins:
+    crowdsec: 25   # Locally detected — highest relevance
+    cscli: 20      # Manual admin bans
+    CAPI: 10       # Community blocklist
+
+  decision_types:
+    ban: 5
+    captcha: 0
+
+  ttl_scoring:
+    enabled: true
+    max_bonus: 10
+    max_ttl: "168h"
+
+  freshness_bonuses:
+    - max_age: "1h"
+      bonus: 15
+    - max_age: "24h"
+      bonus: 10
+    - max_age: "168h"
+      bonus: 5
+
+  cidr_bonuses:
+    - min_prefix: 0
+      max_prefix: 16
+      bonus: 20
+    - min_prefix: 17
+      max_prefix: 24
+      bonus: 10
+    - min_prefix: 25
+      max_prefix: 32
+      bonus: 0
+
+  recidivism_bonus: 15
+
+health:
+  enabled: true
+  path: "/health"
+
+metrics:
+  enabled: true
+  path: "/metrics"
