@@ -97,12 +97,12 @@ After installation, configure each component:
 
 ```bash
 # Bouncer configuration
-nano /etc/crowdsec/bouncers/unifi-bouncer.yaml
+$EDITOR /etc/crowdsec/bouncers/unifi-bouncer.yaml
 
 # Parser is auto-configured for standard UniFi log locations
 
 # Blocklist import (optional)
-nano /etc/crowdsec/blocklist-import.yaml
+$EDITOR /etc/crowdsec/blocklist-import.yaml
 ```
 
 ## Requirements
