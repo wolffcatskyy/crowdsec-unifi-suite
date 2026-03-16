@@ -1,5 +1,8 @@
 # CrowdSec UniFi Suite
 
+[![GitHub Sponsors](https://img.shields.io/github/sponsors/wolffcatskyy?label=Sponsor&logo=github&color=ea4aaa)](https://github.com/sponsors/wolffcatskyy)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/wolffcatskyy)
+
 **Detect &rarr; Decide &rarr; Enforce**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
