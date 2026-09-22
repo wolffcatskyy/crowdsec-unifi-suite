@@ -46,7 +46,7 @@ NC='\033[0m'
 # ---------------------------------------------------------------------------
 # Global Variables
 # ---------------------------------------------------------------------------
-VERSION="1.0.0"
+VERSION="1.0.1"
 GITHUB_RAW="https://raw.githubusercontent.com/wolffcatskyy"
 GITHUB_BASE="https://github.com/wolffcatskyy"
 LOG_FILE="$HOME/.crowdsec-suite-install.log"
@@ -618,13 +618,33 @@ install_crowdsec() {
     msg_info "Installing CrowdSec Engine..."
     log "Installing CrowdSec Engine"
 
-    # Use the official CrowdSec installer
-    if ! curl -s https://install.crowdsec.net | bash 2>&1 | tee -a "$LOG_FILE"; then
-        msg_err "CrowdSec installation failed."
-        log "CrowdSec installation failed"
+    # The official installer configures the package repository; package
+    # installation is a separate step. Capture each pipeline's real status so
+    # tee cannot mask a failed curl, shell, or package-manager command.
+    curl -fsSL https://install.crowdsec.net | bash 2>&1 | tee -a "$LOG_FILE"
+    if [ "${PIPESTATUS[0]}" -ne 0 ] || [ "${PIPESTATUS[1]}" -ne 0 ]; then
+        msg_err "CrowdSec repository setup failed."
+        log "CrowdSec repository setup failed"
         return 1
     fi
 
+    if command -v apt-get >/dev/null 2>&1; then
+        apt-get update 2>&1 | tee -a "$LOG_FILE"
+        [ "${PIPESTATUS[0]}" -eq 0 ] || return 1
+        apt-get install -y crowdsec 2>&1 | tee -a "$LOG_FILE"
+        [ "${PIPESTATUS[0]}" -eq 0 ] || return 1
+    elif command -v yum >/dev/null 2>&1; then
+        yum install -y crowdsec 2>&1 | tee -a "$LOG_FILE"
+        [ "${PIPESTATUS[0]}" -eq 0 ] || return 1
+    elif command -v apk >/dev/null 2>&1; then
+        apk add crowdsec 2>&1 | tee -a "$LOG_FILE"
+        [ "${PIPESTATUS[0]}" -eq 0 ] || return 1
+    else
+        msg_err "No supported package manager found (apt-get, yum, or apk)."
+        return 1
+    fi
+
+    hash -r
     # Verify installation
     if ! command -v cscli >/dev/null 2>&1; then
         msg_err "CrowdSec binary not found after installation."

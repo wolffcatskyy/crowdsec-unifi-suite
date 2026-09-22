@@ -6,7 +6,7 @@
 **Detect &rarr; Decide &rarr; Enforce**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-v1.0.0--beta-orange.svg)](https://github.com/wolffcatskyy/crowdsec-unifi-suite/releases)
+[![Version](https://img.shields.io/badge/version-v1.0.1--beta-orange.svg)](https://github.com/wolffcatskyy/crowdsec-unifi-suite/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/wolffcatskyy/crowdsec-unifi-suite?style=social)](https://github.com/wolffcatskyy/crowdsec-unifi-suite)
 [![CrowdSec](https://img.shields.io/badge/CrowdSec-ecosystem-purple.svg)](https://www.crowdsec.net/)
 
@@ -232,7 +232,7 @@ The interactive installer detects your environment and shows context-aware optio
 
             U n i F i   S u i t e
 
-  v1.0.0               Detect -> Decide -> Enforce
+  v1.0.1               Detect -> Decide -> Enforce
 _______________________________________________________________
 ```
 
