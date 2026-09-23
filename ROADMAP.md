@@ -1,5 +1,15 @@
 # Roadmap
 
+_Refreshed September 23, 2026. Plans, not promises: priorities can shift with user feedback._
+
+- Next: graduate beta with idempotent install, preflight checks, backup/rollback, and a support bundle.
+- Then: a unified `unifi-sec` CLI for status/update/doctor/uninstall plus multi-device inventory.
+- Later: Grafana dashboards and unattended upgrade channels after the core lifecycle is stable.
+
+---
+
+## Earlier roadmap notes
+
 Development direction for the CrowdSec UniFi ecosystem.
 
 ---
