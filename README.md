@@ -126,7 +126,7 @@ The suite always installs the latest release of each component: the installer pu
 | [crowdsec-blocklist-import](https://github.com/wolffcatskyy/crowdsec-blocklist-import) | v3.8.0 | 2026-09-22 |
 | CrowdSec Engine | latest (via `install.crowdsec.net` / `crowdsecurity/crowdsec:latest` image) | - |
 
-The table above is the supported combination. Older or mixed component versions are untested -- if you pin an older component and hit a problem, [open an issue](https://github.com/wolffcatskyy/crowdsec-unifi-suite/issues).
+This is the combination the suite's installer and Docker stack currently deploy. Older or mixed component versions are untested -- if you pin an older component and hit a problem, [open an issue](https://github.com/wolffcatskyy/crowdsec-unifi-suite/issues).
 
 ---
 
