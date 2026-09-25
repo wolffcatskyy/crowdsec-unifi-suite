@@ -6,7 +6,7 @@
 **Detect &rarr; Decide &rarr; Enforce**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-v1.0.1--beta-orange.svg)](https://github.com/wolffcatskyy/crowdsec-unifi-suite/releases)
+[![Version](https://img.shields.io/badge/version-v1.0.2--beta-orange.svg)](https://github.com/wolffcatskyy/crowdsec-unifi-suite/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/wolffcatskyy/crowdsec-unifi-suite?style=social)](https://github.com/wolffcatskyy/crowdsec-unifi-suite)
 [![CrowdSec](https://img.shields.io/badge/CrowdSec-ecosystem-purple.svg)](https://www.crowdsec.net/)
 
@@ -112,6 +112,21 @@ See [Server-Side Stack](#server-side-stack) below for full setup instructions.
 | AbuseIPDB Reporter | Report malicious IPs to AbuseIPDB | Docker Server | Built into Sidecar |
 
 Each component can be installed and used independently.
+
+---
+
+## Component Version Compatibility
+
+The suite always installs the latest release of each component: the installer pulls from each component's repository, and the Docker stack uses `:latest` images. Current component versions:
+
+| Component | Version | Released |
+|-----------|---------|----------|
+| [crowdsec-unifi-bouncer](https://github.com/wolffcatskyy/crowdsec-unifi-bouncer) (firewall bouncer + sidecar) | v2.5.4 | 2026-09-24 |
+| [crowdsec-unifi-parser](https://github.com/wolffcatskyy/crowdsec-unifi-parser) | v1.0.0 | 2026-02-04 |
+| [crowdsec-blocklist-import](https://github.com/wolffcatskyy/crowdsec-blocklist-import) | v3.8.0 | 2026-09-22 |
+| CrowdSec Engine | latest (via `install.crowdsec.net` / `crowdsecurity/crowdsec:latest` image) | - |
+
+The table above is the supported combination. Older or mixed component versions are untested -- if you pin an older component and hit a problem, [open an issue](https://github.com/wolffcatskyy/crowdsec-unifi-suite/issues).
 
 ---
 
