@@ -46,7 +46,7 @@ NC='\033[0m'
 # ---------------------------------------------------------------------------
 # Global Variables
 # ---------------------------------------------------------------------------
-VERSION="1.0.1"
+VERSION="1.0.2"
 GITHUB_RAW="https://raw.githubusercontent.com/wolffcatskyy"
 GITHUB_BASE="https://github.com/wolffcatskyy"
 LOG_FILE="$HOME/.crowdsec-suite-install.log"
