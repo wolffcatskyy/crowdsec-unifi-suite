@@ -735,9 +735,30 @@ install_bouncer() {
     msg_info "Installing UniFi Bouncer..."
     log "Installing UniFi Bouncer"
 
-    # Delegate to the bouncer's own bootstrap script
-    if ! curl -sSL "${GITHUB_RAW}/crowdsec-unifi-bouncer/main/bootstrap.sh" | bash 2>&1 | tee -a "$LOG_FILE"; then
+    # Delegate to the bouncer's own bootstrap script. No pipefail is set
+    # script-wide, so check the bootstrap stage of the pipeline explicitly;
+    # otherwise a crashing bootstrap is masked by tee succeeding (issue #4).
+    curl -sSL "${GITHUB_RAW}/crowdsec-unifi-bouncer/main/bootstrap.sh" | bash 2>&1 | tee -a "$LOG_FILE"
+    if [ "${PIPESTATUS[1]}" -ne 0 ]; then
         msg_err "Bouncer bootstrap failed."
+        log "Bouncer install failed: bootstrap exited ${PIPESTATUS[1]}"
+        return 1
+    fi
+
+    # Verify the bootstrap actually delivered its artifacts before touching
+    # the service: the binary on disk and a registered systemd unit (issue #4).
+    if [ ! -x /data/crowdsec-bouncer/crowdsec-firewall-bouncer ]; then
+        msg_err "Bouncer binary missing at /data/crowdsec-bouncer/crowdsec-firewall-bouncer after bootstrap."
+        log "Bouncer install failed: binary missing after bootstrap"
+        return 1
+    fi
+    if ! systemctl cat crowdsec-firewall-bouncer.service >/dev/null 2>&1; then
+        systemctl daemon-reload 2>/dev/null || true
+    fi
+    if ! systemctl cat crowdsec-firewall-bouncer.service >/dev/null 2>&1; then
+        msg_err "systemd unit crowdsec-firewall-bouncer.service is not registered after bootstrap."
+        msg_dim "  Check: ls -l /etc/systemd/system/crowdsec-firewall-bouncer.service"
+        log "Bouncer install failed: systemd unit not registered"
         return 1
     fi
 
@@ -780,25 +801,45 @@ install_bouncer() {
         msg_info "Create it manually with api_url and api_key set."
     fi
 
-    # Enable and start the service
+    # Enable and start the service. Fail closed (issue #4): a failed enable
+    # or start is an installation failure, not a warning followed by a
+    # success message.
     if systemctl is-enabled crowdsec-firewall-bouncer >/dev/null 2>&1; then
         msg_info "Starting bouncer service..."
-        systemctl restart crowdsec-firewall-bouncer 2>&1 | tee -a "$LOG_FILE" || true
+        systemctl restart crowdsec-firewall-bouncer 2>&1 | tee -a "$LOG_FILE"
+        if [ "${PIPESTATUS[0]}" -ne 0 ]; then
+            msg_err "Failed to restart crowdsec-firewall-bouncer."
+            log "Bouncer install failed: service restart failed"
+            return 1
+        fi
     else
         msg_info "Enabling bouncer service..."
-        systemctl enable crowdsec-firewall-bouncer 2>&1 | tee -a "$LOG_FILE" || true
-        systemctl start crowdsec-firewall-bouncer 2>&1 | tee -a "$LOG_FILE" || true
+        systemctl enable crowdsec-firewall-bouncer 2>&1 | tee -a "$LOG_FILE"
+        if [ "${PIPESTATUS[0]}" -ne 0 ]; then
+            msg_err "Failed to enable crowdsec-firewall-bouncer.service."
+            msg_dim "  Check: systemctl status crowdsec-firewall-bouncer"
+            log "Bouncer install failed: service enable failed"
+            return 1
+        fi
+        systemctl start crowdsec-firewall-bouncer 2>&1 | tee -a "$LOG_FILE"
+        if [ "${PIPESTATUS[0]}" -ne 0 ]; then
+            msg_err "Failed to start crowdsec-firewall-bouncer.service."
+            msg_dim "  Check: systemctl status crowdsec-firewall-bouncer"
+            log "Bouncer install failed: service start failed"
+            return 1
+        fi
     fi
 
-    # Verify
+    # Verify the service is actually running before reporting success.
     sleep 2
-    if systemctl is-active crowdsec-firewall-bouncer >/dev/null 2>&1; then
-        msg_ok "Bouncer service is running."
-    else
-        msg_warn "Bouncer service may not have started. Check with:"
-        msg_dim "  systemctl status crowdsec-firewall-bouncer"
+    if ! systemctl is-active crowdsec-firewall-bouncer >/dev/null 2>&1; then
+        msg_err "Bouncer service is not active after start."
+        msg_dim "  Check: systemctl status crowdsec-firewall-bouncer"
+        log "Bouncer install failed: service not active after start"
+        return 1
     fi
 
+    msg_ok "Bouncer service is running."
     BOUNCER_INSTALLED=true
     return 0
 }
